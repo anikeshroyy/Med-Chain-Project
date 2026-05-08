@@ -875,12 +875,100 @@ img {
     color: var(--text-muted);
 }
 
-/* ===== RESPONSIVE ===== */
+/* ===== HAMBURGER MENU ===== */
+.hamburger {
+    display: none;
+    flex-direction: column;
+    gap: 5px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 6px;
+    z-index: 110;
+}
+
+.hamburger span {
+    display: block;
+    width: 22px;
+    height: 2px;
+    background: var(--text-primary);
+    border-radius: 2px;
+    transition: var(--transition);
+    transform-origin: center;
+}
+
+.hamburger.active span:nth-child(1) {
+    transform: rotate(45deg) translate(5px, 5px);
+}
+
+.hamburger.active span:nth-child(2) {
+    opacity: 0;
+}
+
+.hamburger.active span:nth-child(3) {
+    transform: rotate(-45deg) translate(5px, -5px);
+}
+
+/* Mobile Nav */
+.mobile-nav {
+    display: none;
+    flex-direction: column;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-subtle);
+    padding: 8px 24px 16px;
+}
+
+.mobile-nav.open {
+    display: flex;
+}
+
+.mobile-nav-link {
+    padding: 12px 0;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-subtle);
+    transition: var(--transition);
+}
+
+.mobile-nav-link:last-child {
+    border-bottom: none;
+}
+
+.mobile-nav-link:hover {
+    color: var(--text-primary);
+    padding-left: 8px;
+}
+
+/* ===== RESPONSIVE: TABLET (max-width: 900px) ===== */
 @media (max-width: 900px) {
+    .section-container {
+        padding: 72px 20px;
+    }
+
+    .section-header {
+        margin-bottom: 40px;
+    }
+
+    .section-header h2 {
+        font-size: 1.7rem;
+    }
+
+    /* Upload Section */
     .diagnosis-layout {
         grid-template-columns: 1fr;
     }
 
+    .upload-dropzone {
+        min-height: 280px;
+    }
+
+    .preview-container,
+    .preview-container img {
+        min-height: 280px;
+    }
+
+    /* Pipeline */
     .pipeline {
         flex-direction: column;
         align-items: center;
@@ -897,10 +985,12 @@ img {
         width: 100%;
     }
 
+    /* Tech Grid */
     .tech-grid {
         grid-template-columns: 1fr 1fr;
     }
 
+    /* Footer */
     .footer-top {
         grid-template-columns: 1fr 1fr;
         gap: 32px;
@@ -911,13 +1001,50 @@ img {
     }
 }
 
+/* ===== RESPONSIVE: MOBILE (max-width: 640px) ===== */
 @media (max-width: 640px) {
+    /* Header */
     #main-nav {
         display: none;
     }
 
     .header-status {
         display: none;
+    }
+
+    .hamburger {
+        display: flex;
+    }
+
+    .header-inner {
+        padding: 0 16px;
+        height: 56px;
+    }
+
+    /* Hero */
+    #hero {
+        min-height: auto;
+        padding: 100px 16px 60px;
+    }
+
+    #hero-title {
+        font-size: 2rem;
+        letter-spacing: -0.8px;
+    }
+
+    .hero-subtitle {
+        font-size: 0.95rem;
+        margin-bottom: 28px;
+    }
+
+    .hero-actions {
+        flex-direction: column;
+        align-items: stretch;
+        margin-bottom: 40px;
+    }
+
+    .hero-actions .btn {
+        justify-content: center;
     }
 
     .hero-stats {
@@ -930,24 +1057,126 @@ img {
         height: 1px;
     }
 
-    .hero-actions {
-        flex-direction: column;
-        align-items: center;
+    /* Upload Section */
+    .section-container {
+        padding: 56px 16px;
     }
 
+    .section-header h2 {
+        font-size: 1.5rem;
+    }
+
+    .upload-dropzone {
+        min-height: 220px;
+    }
+
+    .preview-container,
+    .preview-container img {
+        min-height: 220px;
+    }
+
+    .dropzone-icon svg {
+        width: 36px;
+        height: 36px;
+    }
+
+    .dropzone-title {
+        font-size: 0.95rem;
+    }
+
+    .dropzone-hint {
+        font-size: 0.8rem;
+    }
+
+    /* Results */
+    .results-empty,
+    .results-loading {
+        height: 240px;
+    }
+
+    .result-card {
+        padding: 16px;
+    }
+
+    .heatmap-image-wrapper img {
+        aspect-ratio: auto;
+    }
+
+    /* Pipeline */
+    .pipeline-step {
+        padding: 20px 16px;
+    }
+
+    .pipeline-step h3 {
+        font-size: 0.9rem;
+    }
+
+    .pipeline-connector {
+        height: 16px;
+    }
+
+    /* Tech Grid */
     .tech-grid {
         grid-template-columns: 1fr;
+        gap: 12px;
     }
 
+    .tech-card {
+        padding: 20px 18px;
+    }
+
+    /* Footer */
     .footer-top {
         grid-template-columns: 1fr;
         gap: 28px;
         padding: 40px 0 28px;
     }
 
+    .footer-tagline {
+        max-width: 100%;
+    }
+
     .footer-bottom {
         flex-direction: column;
         gap: 8px;
         text-align: center;
+    }
+}
+
+/* ===== RESPONSIVE: SMALL MOBILE (max-width: 380px) ===== */
+@media (max-width: 380px) {
+    #hero-title {
+        font-size: 1.7rem;
+    }
+
+    .hero-subtitle {
+        font-size: 0.88rem;
+    }
+
+    .btn {
+        padding: 10px 18px;
+        font-size: 0.85rem;
+    }
+
+    .logo-icon {
+        width: 32px;
+        height: 32px;
+    }
+
+    .logo-icon svg {
+        width: 20px;
+        height: 20px;
+    }
+
+    .logo-text {
+        font-size: 0.95rem;
+    }
+
+    .stat-value {
+        font-size: 0.85rem;
+    }
+
+    .stat-label {
+        font-size: 0.7rem;
     }
 }

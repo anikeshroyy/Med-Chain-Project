@@ -303,3 +303,30 @@ function updateActiveNav() {
 }
 
 window.addEventListener("scroll", updateActiveNav);
+
+// ===== MOBILE HAMBURGER MENU =====
+const hamburgerBtn = document.getElementById("hamburger-btn");
+const mobileNav = document.getElementById("mobile-nav");
+
+hamburgerBtn.addEventListener("click", () => {
+    hamburgerBtn.classList.toggle("active");
+    mobileNav.classList.toggle("open");
+});
+
+// Close mobile nav when a link is clicked
+document.querySelectorAll(".mobile-nav-link").forEach((link) => {
+    link.addEventListener("click", (e) => {
+        hamburgerBtn.classList.remove("active");
+        mobileNav.classList.remove("open");
+
+        // Smooth scroll
+        const targetId = link.getAttribute("href");
+        const target = document.querySelector(targetId);
+        if (target) {
+            e.preventDefault();
+            const headerOffset = 56;
+            const elementPos = target.getBoundingClientRect().top + window.scrollY;
+            window.scrollTo({ top: elementPos - headerOffset, behavior: "smooth" });
+        }
+    });
+});
