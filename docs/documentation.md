@@ -1,233 +1,275 @@
-# 📄 Full Technical Documentation: Med-Chain (AI + Blockchain)
+# Full Technical Documentation: Med-Chain (AI + Blockchain)
 
 ---
 
-## 1. Project Architecture (Kaam Kaise Karta Hai?)
+## 1. Project Architecture
 
-Is project ka flow 5 steps mein divided hai:
+The system processes a chest X-ray image through five sequential layers:
 
-1. **Input:** Doctor ya patient Chest X-ray upload karta hai.
-2. **AI Layer:** Model image ko resize karta hai aur Pneumonia predict karta hai.
-3. **XAI Layer:** Grad-CAM us image par heatmap banata hai (infection area highlight karta hai).
-4. **Storage Layer:** Image IPFS par upload hoti hai (jisse ek unique CID milti hai).
-5. **Blockchain Layer:** Image ka Hash, CID, aur AI result Ganache (Ethereum) par hamesha ke liye secure ho jata hai.
+1. **Input** — A doctor or patient uploads a Chest X-ray image via the Streamlit web interface.
+2. **AI Layer** — The MobileNetV2 model preprocesses the image and predicts whether the case is Pneumonia or Normal, along with a confidence score.
+3. **XAI Layer** — Grad-CAM generates a heatmap overlaid on the original image, highlighting the lung regions that most influenced the AI's decision.
+4. **Storage Layer** — The image is encrypted using AES-256 and uploaded to IPFS. IPFS returns a unique CID (Content Identifier) for retrieval.
+5. **Blockchain Layer** — The image's SHA-256 hash, IPFS CID, and AI diagnosis are recorded permanently on a local Ethereum network (Ganache) via a Solidity smart contract.
+
+### System Flow Diagram
+
+```
+User uploads X-ray
+        |
+        v
+[AI Layer: MobileNetV2]
+  - Resize image to 224x224
+  - Normalize pixel values
+  - Predict: NORMAL or PNEUMONIA
+  - Output confidence score
+        |
+        v
+[XAI Layer: Grad-CAM]
+  - Compute gradients from last conv layer (Conv_1)
+  - Generate heatmap
+  - Overlay heatmap on original image
+        |
+        v
+[Security Layer]
+  - SHA-256 hash of raw image (tamper detection)
+  - AES-256 encryption of image file
+        |
+        v
+[Storage Layer: IPFS]
+  - Upload encrypted image via HTTP POST to local IPFS node
+  - Receive CID (e.g., QmTaJoVMiV...)
+        |
+        v
+[Blockchain Layer: Ethereum/Ganache]
+  - Call addRecord() on Solidity smart contract
+  - Store: CID + image hash permanently on-chain
+  - Returns transaction hash as proof
+```
 
 ---
 
 ## 2. Phase 1: AI Model & Preprocessing (Deep Learning)
 
-### A. Image Resize & Preprocessing
+### A. Why MobileNetV2?
 
-MobileNetV2 sirf 224x224 pixels ki images ko samajh sakta hai. Isliye har X-ray ko upload hote hi resize karna zaroori tha.
+MobileNetV2 is a lightweight convolutional neural network originally trained by Google on the ImageNet dataset (1.4 million images, 1000 classes). Instead of training from scratch, which requires massive datasets and weeks of GPU time, Transfer Learning allows us to reuse the feature-extraction layers of MobileNetV2 and only train a small custom output layer on our X-ray dataset.
 
-**Code snippet (Image Processing):**
+This approach achieves high accuracy with significantly less data and compute.
 
-```python
-import tensorflow as tf
-from tensorflow.keras.preprocessing import image
-import numpy as np
+### B. Model Architecture
 
-def preprocess_image(img_path):
-    # Image ko 224x224 mein load aur resize karna
-    img = image.load_img(img_path, target_size=(224, 224))
-    
-    # Image ko array mein convert karna
-    img_array = image.img_to_array(img)
-    
-    # Model ke hisaab se dimensions badhana (Batch size add karna)
-    img_array = np.expand_dims(img_array, axis=0)
-    
-    # MobileNetV2 ke format mein normalize karna (Pixel values 0-1 ke beech)
-    img_array = tf.keras.applications.mobilenet_v2.preprocess_input(img_array)
-    
-    return img_array
+```
+Input (224 x 224 x 3 RGB image)
+        |
+MobileNetV2 Base (pre-trained on ImageNet, weights frozen)
+        |
+GlobalAveragePooling2D (reduce spatial dimensions)
+        |
+Dense(128, activation='relu')  -- custom layer
+        |
+Dense(2, activation='softmax') -- output: [NORMAL, PNEUMONIA]
 ```
 
-### B. MobileNetV2 Architecture
+The final output is a probability vector. For example: `[0.06, 0.94]` means 6% Normal, 94% Pneumonia.
 
-Humne scratch se model nahi banaya kyunki usme mahino lagte. Humne Transfer Learning use ki aur pre-trained weights (imagenet) par apna output layer lagaya.
+### C. Image Preprocessing
 
-**Code snippet (Model Building):**
+MobileNetV2 requires input images of exactly 224x224 pixels with pixel values between 0 and 1.
 
-```python
-from tensorflow.keras.applications import MobileNetV2
-from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
-from tensorflow.keras.models import Model
+Steps applied to every uploaded image:
+1. Convert to RGB (handles grayscale X-rays that have only 1 channel)
+2. Resize to (224, 224)
+3. Convert to NumPy array
+4. Normalize by dividing by 255.0
+5. Add batch dimension: shape becomes (1, 224, 224, 3)
 
-# Base model load karna (upar ki layers hatakar)
-base_model = MobileNetV2(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
+### D. Training Details (train_local.py)
 
-# Nayi custom layers add karna
-x = base_model.output
-x = GlobalAveragePooling2D()(x)
-x = Dense(128, activation='relu')(x)
+| Parameter | Value |
+| :--- | :--- |
+| Base Model | MobileNetV2 (ImageNet weights) |
+| Optimizer | Adam |
+| Loss Function | Categorical Crossentropy |
+| Epochs | 15 |
+| Batch Size | 16 |
+| Validation Split | 20% |
+| Class Weights | NORMAL: 2.5, PNEUMONIA: 1.0 |
+| Augmentation | Rotation (10 deg), Zoom (10%), Horizontal Flip |
 
-# Final output layer (2 classes: Normal ya Pneumonia)
-predictions = Dense(2, activation='softmax')(x)
+Class weights were applied because the Chest X-ray dataset contains significantly more Pneumonia samples than Normal. Without this correction, the model is biased toward always predicting Pneumonia. Giving a higher weight to NORMAL forces the model to pay equal attention to both classes.
 
-# Final model tayyar karna
-model = Model(inputs=base_model.input, outputs=predictions)
-```
+The trained weights are saved to `local_model_weights.h5`. The full model is not saved as a single file because the architecture is rebuilt in code each time the app starts, then the weights are loaded into it.
 
 ---
 
 ## 3. Phase 2: Explainable AI (Grad-CAM)
 
-AI ne agar Pneumonia bola, toh doctor us par direct trust kyu kare? Isliye humne Grad-CAM (Gradient-weighted Class Activation Mapping) implement kiya. Ye image par red/yellow color ka dhabba (heatmap) banata hai wahan jahan problem hai.
+### Why Explainability Matters
 
-**Code snippet (Heatmap Logic):**
+A black-box AI model in a medical context is dangerous. If the model says "Pneumonia" but the doctor cannot see why, there is no basis for trust. Grad-CAM (Gradient-weighted Class Activation Mapping) solves this by producing a visual explanation.
 
-```python
-import cv2
+### How Grad-CAM Works
 
-def generate_gradcam_heatmap(model, img_array, last_conv_layer_name="Conv_1"):
-    # Model ko do hisso mein batna: inputs aur last layer
-    grad_model = tf.keras.models.Model(
-        [model.inputs], 
-        [model.get_layer(last_conv_layer_name).output, model.output]
-    )
+Grad-CAM measures how much each spatial region in the last convolutional layer's feature map contributed to the final prediction. Regions with a high positive gradient are colored red/yellow on the heatmap — these are the areas the AI "looked at" most strongly.
 
-    # Gradients calculate karna
-    with tf.GradientTape() as tape:
-        last_conv_layer_output, preds = grad_model(img_array)
-        top_pred_index = tf.argmax(preds[0])
-        class_channel = preds[:, top_pred_index]
+### Steps in the Implementation
 
-    # Gradients aur pooling apply karna
-    grads = tape.gradient(class_channel, last_conv_layer_output)
-    pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
-    
-    # Heatmap generate karna
-    last_conv_layer_output = last_conv_layer_output[0]
-    heatmap = last_conv_layer_output @ pooled_grads[..., tf.newaxis]
-    heatmap = tf.squeeze(heatmap)
-    heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
-    
-    return heatmap.numpy()
+1. Create a sub-model that outputs both the last conv layer (`Conv_1` in MobileNetV2) and the final prediction.
+2. Run a forward pass with `tf.GradientTape()` to record operations.
+3. Compute the gradient of the predicted class score with respect to the last conv layer's output.
+4. Average the gradients across all channels using `tf.reduce_mean`.
+5. Multiply the averaged gradients with the feature map to get the heatmap.
+6. Apply ReLU to keep only positive contributions.
+7. Resize the heatmap to match the original image dimensions (224x224).
+8. Apply the JET colormap using OpenCV (`cv2.COLORMAP_JET`) — red = high activation, blue = low.
+9. Blend the heatmap with the original image using `cv2.addWeighted` (60% original, 40% heatmap).
+
+The output is displayed directly in the Streamlit interface alongside the original X-ray.
+
+---
+
+## 4. Phase 3: Security Layer
+
+### SHA-256 Hashing (secure_data.py)
+
+Every medical image gets a SHA-256 digital fingerprint. This is a 64-character hexadecimal string derived from the raw bytes of the image file. If even a single pixel is changed, the hash changes completely. This makes it possible to verify at any time that the image stored on IPFS is identical to the one originally uploaded.
+
+Example hash:
+```
+de2079fb45d4bb0e4c6a48481e7b6ee31ab7601e83b43cd07820168b93de1d13
+```
+
+### AES-256 Encryption (secure_data.py)
+
+Before uploading to IPFS, the raw image is encrypted using AES-256 in EAX mode (authenticated encryption). This ensures that the stored file is unreadable to anyone who does not hold the 256-bit encryption key.
+
+The encrypted output (`encrypted_xray.bin`) contains three parts written sequentially:
+- **Nonce** — 16-byte random value used to initialize the cipher
+- **Tag** — authentication tag to detect tampering
+- **Ciphertext** — the actual encrypted image bytes
+
+---
+
+## 5. Phase 4: Decentralized Storage (IPFS)
+
+### Why IPFS Instead of a Central Server?
+
+Storing medical images on a centralized server creates a single point of failure and a single target for attackers. IPFS distributes the data across many nodes. More importantly, IPFS uses content-addressed storage — the CID is derived from the content itself, so the same file always produces the same CID. This means you can always independently verify that the file you retrieved is exactly what was stored.
+
+### How the Upload Works (upload_to_ipfs.py)
+
+The IPFS Python library (`ipfshttpclient`) had compatibility issues with newer versions of IPFS Kubo. The solution was to bypass the library entirely and make a direct HTTP POST request to the local IPFS node's API.
+
+Endpoint used:
+```
+POST http://127.0.0.1:5001/api/v0/add
+```
+
+The response contains a `Hash` field which is the CID. Example:
+```
+QmTaJoVMiVeEvMQZdpUX1Jv5jCqG94RHgQ9g4ZW58BwuqN
+```
+
+This CID is then publicly accessible via any IPFS gateway:
+```
+https://ipfs.io/ipfs/QmTaJoVMiVeEvMQZdpUX1Jv5jCqG94RHgQ9g4ZW58BwuqN
 ```
 
 ---
 
-## 4. Phase 3: Decentralized Storage (IPFS)
+## 6. Phase 5: Blockchain Implementation (Ethereum/Ganache)
 
-Medical X-rays file size mein badi hoti hain. Unhe direct Blockchain par daalna bahut expensive aur slow hota. Isliye image IPFS par daali gayi, aur wahan se humein ek CID (Content ID) mila.
+### The Smart Contract (Solidity)
 
-> **Note:** Kyunki library error de rahi thi, humne direct HTTP Request use ki.
-
-**Code snippet (IPFS Upload):**
-
-```python
-import requests
-
-def upload_to_ipfs(file_path):
-    # IPFS Kubo node ka local address
-    ipfs_api_url = 'http://127.0.0.1:5001/api/v0/add'
-    
-    with open(file_path, 'rb') as f:
-        files = {'file': f}
-        response = requests.post(ipfs_api_url, files=files)
-        
-    if response.status_code == 200:
-        # CID return karna
-        return response.json()['Hash']
-    else:
-        return "Error uploading to IPFS"
-```
-
----
-
-## 5. Phase 4: Blockchain Implementation (Ethereum/Ganache)
-
-Data ko secure, tamper-proof, aur private rakhne ke liye humne Solidity mein Smart Contract likha aur use Python se joda.
-
-### A. The Smart Contract (Solidity)
-
-Ye code batata hai ki blockchain par kya kya save hoga.
-
-**Code snippet (MedChain.sol):**
+The Solidity smart contract defines what data gets stored on the blockchain and exposes two functions: one to add a record, and one to retrieve it.
 
 ```solidity
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-contract MedChain {
-    // Record ka structure
-    struct MedicalRecord {
-        string patientId;
-        string imageHash;   // SHA-256 hash security ke liye
-        string ipfsCID;     // IPFS ka address
-        string aiDiagnosis; // Pneumonia ya Normal
+contract MedicalRecords {
+    struct Record {
+        string ipfsCID;
+        string imageHash;
         uint256 timestamp;
     }
 
-    // Records ko store karne ke liye mapping
-    mapping(string => MedicalRecord) public records;
+    Record[] public records;
 
-    // Naya record add karne ka function
-    function addRecord(string memory _id, string memory _hash, string memory _cid, string memory _diagnosis) public {
-        records[_id] = MedicalRecord(_id, _hash, _cid, _diagnosis, block.timestamp);
+    function addRecord(string memory _cid, string memory _hash) public {
+        records.push(Record(_cid, _hash, block.timestamp));
+    }
+
+    function getRecord(uint256 index) public view returns (string memory, string memory, uint256) {
+        Record memory r = records[index];
+        return (r.ipfsCID, r.imageHash, r.timestamp);
     }
 }
 ```
 
-### B. Python to Ganache Connection (Web3.py)
+Data stored per record:
+- `ipfsCID` — the IPFS address of the encrypted image
+- `imageHash` — the SHA-256 fingerprint of the original image
+- `timestamp` — the Unix timestamp when the record was created (added automatically by the blockchain)
 
-Streamlit app se Blockchain par data bhejne ka code.
+Once written, this data cannot be deleted or modified by anyone. This is the core value of blockchain for medical records.
 
-**Code snippet (blockchain_layer.py):**
+### Deployment Process
 
-```python
-from web3 import Web3
+1. Write the contract in `blockchain_layer/contracts/MedicalRecords.sol`
+2. Configure `truffle-config.js` to point to Ganache at `http://127.0.0.1:7545`
+3. Run `truffle migrate --reset` to deploy
+4. Truffle outputs the deployed contract address (e.g., `0x9dA1982739cba28e609bD0cB8A1323A1841BBfDA`)
+5. Copy this address into `app.py` and `blockchain_sync.py`
+6. The contract ABI (interface definition) is read from `blockchain_layer/build/contracts/MedicalRecords.json`
 
-# Ganache se connect karna
-w3 = Web3(Web3.HTTPProvider('http://127.0.0.1:7545'))
+### Python to Blockchain Connection (Web3.py)
 
-# Contract Address aur ABI (Truffle se milta hai)
-contract_address = '0xYourContractAddressHere...'
-contract_abi = [...] # Yahan contract ka JSON ABI lagta hai
-
-contract = w3.eth.contract(address=contract_address, abi=contract_abi)
-account = w3.eth.accounts[0] # Ganache ka pehla account
-
-def store_on_blockchain(patient_id, image_hash, ipfs_cid, diagnosis):
-    # Transaction build aur send karna
-    tx_hash = contract.functions.addRecord(
-        patient_id, image_hash, ipfs_cid, diagnosis
-    ).transact({'from': account})
-    
-    # Transaction complete hone ka wait karna
-    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    return receipt
+```
+Ganache (local Ethereum node) running at http://127.0.0.1:7545
+        |
+Web3.py connects via HTTPProvider
+        |
+Contract loaded using address + ABI from Truffle build output
+        |
+contract.functions.addRecord(cid, img_hash).transact({'from': account})
+        |
+Returns a transaction hash as proof of the write operation
 ```
 
 ---
 
-## 6. Phase 5: The Web Interface (Streamlit)
+## 7. Phase 6: Web Interface (Streamlit)
 
-Ye sab kuch ek aasan screen par laane ke liye Streamlit ka use hua jise koi bhi doctor chala sakta hai.
+Streamlit converts Python scripts into interactive web apps without requiring any frontend code. The entire UI is defined in `app.py`.
 
-**Code snippet (app.py):**
+### Interface Components
 
-```python
-import streamlit as st
-import hashlib
+| Component | Purpose |
+| :--- | :--- |
+| Sidebar: IPFS status | Live check of connection to `http://127.0.0.1:5001` |
+| Sidebar: Blockchain status | Live check of connection to Ganache at `http://127.0.0.1:7545` |
+| File uploader | Accepts JPG, JPEG, PNG chest X-ray images |
+| Left column | Displays the original uploaded X-ray |
+| Right column | Displays AI diagnosis, confidence score, progress bar |
+| Grad-CAM section | Displays the heatmap overlaid on the X-ray |
+| Sync button | Triggers SHA-256 hash, IPFS upload, and blockchain write |
+| Result code block | Shows the IPFS CID and Ethereum transaction hash after sync |
 
-st.title("🏥 Med-Chain: AI & Blockchain Diagnostics")
+### Model Loading Strategy
 
-# File uploader UI
-uploaded_file = st.file_uploader("Upload Chest X-ray", type=["jpg", "png", "jpeg"])
+The model is loaded once at startup using `@st.cache_resource`. This decorator tells Streamlit to cache the result across all user sessions, so the model is not reloaded every time someone uploads a new image. This is critical because loading TensorFlow model weights is slow.
 
-if uploaded_file is not None:
-    # 1. Image dikhana
-    st.image(uploaded_file, caption="Uploaded X-ray", width=300)
-    
-    # 2. SHA-256 Hash Generate karna
-    file_bytes = uploaded_file.getvalue()
-    img_hash = hashlib.sha256(file_bytes).hexdigest()
-    st.write(f"🔒 **Secure Image Hash:** {img_hash}")
-    
-    if st.button("Diagnose & Secure"):
-        # Yahan se AI prediction, IPFS upload aur Blockchain store function call hote hain
-        st.success("Diagnosis Complete: PNEUMONIA DETECTED")
-        st.info("Record successfully permanently secured on Ethereum Blockchain!")
-```
+---
+
+## 8. Known Limitations
+
+| Limitation | Detail |
+| :--- | :--- |
+| Python version | TensorFlow requires Python 3.9, 3.10, or 3.11. Python 3.12+ is not fully supported. |
+| Local-only blockchain | Ganache is a development-only tool. Real deployment would require a public Ethereum testnet (e.g., Sepolia) or mainnet using a service like Alchemy or Infura. |
+| Local-only IPFS | The current implementation uses a locally running IPFS node. For cloud deployment, a pinning service such as Pinata or Web3.Storage would be required. |
+| Single-image diagnosis | The model classifies one image at a time. Batch processing is not implemented in the current UI. |
+| No patient ID system | The current smart contract does not associate records with a patient ID. This would be required for a production medical system. |
+| No authentication | The Streamlit interface has no login or access control. Any user can upload an image and trigger a blockchain write. |
