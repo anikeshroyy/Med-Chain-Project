@@ -1,6 +1,6 @@
 // ===== CONFIGURATION =====
 // Change this URL when you deploy your ML backend to HuggingFace Spaces
-const API_BASE_URL = "http://127.0.0.1:8000";
+const API_BASE_URL = "https://anikeshroyy-medchain-api.hf.space";
 
 // ===== DOM ELEMENTS =====
 const dropzone = document.getElementById("upload-dropzone");
