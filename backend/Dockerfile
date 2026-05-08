@@ -11,9 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code and model weights
+# Copy application code and model
 COPY app.py .
-COPY local_model_weights.h5 .
+COPY medchain_model.keras .
 
 # Expose port 7860 (HuggingFace Spaces default)
 EXPOSE 7860

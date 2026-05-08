@@ -1,4 +1,5 @@
 # Virtual Environment
+chest_xray/
 med_env/
 venv/
 env/
@@ -13,6 +14,12 @@ __pycache__/
 
 # Binary / test files
 encrypted_xray.bin
+
+# Model files (too large for GitHub — deploy via HuggingFace separately)
+*.h5
+*.weights.h5
+*.keras
+medchain_model.keras
 
 # OS files
 .DS_Store

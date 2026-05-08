@@ -24,21 +24,9 @@ app.add_middleware(
 )
 
 # ===== MODEL LOADING (runs once at startup) =====
-def build_model():
-    """Rebuilds the MobileNetV2 architecture (must match training)."""
-    base_model = tf.keras.applications.MobileNetV2(
-        weights=None, include_top=False, input_shape=(224, 224, 3)
-    )
-    x = tf.keras.layers.GlobalAveragePooling2D()(base_model.output)
-    x = tf.keras.layers.Dense(128, activation='relu')(x)
-    predictions = tf.keras.layers.Dense(2, activation='softmax')(x)
-    model = tf.keras.models.Model(inputs=base_model.input, outputs=predictions)
-    return model
-
 def load_model():
-    model = build_model()
-    model.load_weights("local_model_weights.h5")
-    return model
+    """Loads the full saved model (.keras format)."""
+    return tf.keras.models.load_model("medchain_model.keras")
 
 print("Loading AI model...")
 model = load_model()
